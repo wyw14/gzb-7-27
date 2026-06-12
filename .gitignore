@@ -50,3 +50,21 @@ Thumbs.db
 *.7z
 *.tmp
 *.temp
+# Additional large generated/binary files
+*.iso
+*.img
+*.dmg
+*.exe
+*.msi
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.psd
+*.ai
+*.sketch
+*.fig
+*.sqlite
+*.db
+*.bak
+*.old
