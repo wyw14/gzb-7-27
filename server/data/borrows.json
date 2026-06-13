@@ -12,5 +12,47 @@
     "status": "borrowing",
     "createdAt": "2026-06-08T10:00:00.000Z",
     "confirmedAt": "2026-06-09T14:00:00.000Z"
+  },
+  {
+    "id": "b002",
+    "instrumentId": "i001",
+    "borrowerId": "u002",
+    "ownerId": "u001",
+    "startDate": "2026-06-05",
+    "endDate": "2026-06-11",
+    "purpose": "周末练习用",
+    "depositPaid": 500,
+    "feeTotal": 180,
+    "status": "borrowing",
+    "createdAt": "2026-06-03T10:00:00.000Z",
+    "confirmedAt": "2026-06-04T14:00:00.000Z"
+  },
+  {
+    "id": "b003",
+    "instrumentId": "i002",
+    "borrowerId": "u004",
+    "ownerId": "u002",
+    "startDate": "2026-06-08",
+    "endDate": "2026-06-14",
+    "purpose": "学生演出需要用钢琴",
+    "depositPaid": 1500,
+    "feeTotal": 480,
+    "status": "borrowing",
+    "createdAt": "2026-06-06T10:00:00.000Z",
+    "confirmedAt": "2026-06-07T14:00:00.000Z"
+  },
+  {
+    "id": "b004",
+    "instrumentId": "i003",
+    "borrowerId": "u003",
+    "ownerId": "u001",
+    "startDate": "2026-06-09",
+    "endDate": "2026-06-15",
+    "purpose": "学习尤克里里基础",
+    "depositPaid": 300,
+    "feeTotal": 90,
+    "status": "borrowing",
+    "createdAt": "2026-06-07T10:00:00.000Z",
+    "confirmedAt": "2026-06-08T14:00:00.000Z"
   }
 ]

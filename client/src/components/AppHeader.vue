@@ -74,7 +74,7 @@
 import { ref, computed, inject, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { borrowApi, invitationApi } from '../api'
+import { borrowApi, invitationApi, messageApi } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
@@ -116,11 +116,12 @@ const handleCommand = (cmd) => {
 onMounted(async () => {
   if (userStore.isLoggedIn) {
     try {
-      const [borrows, invitations] = await Promise.all([
+      const [borrows, invitations, reminderUnread] = await Promise.all([
         borrowApi.list({ ownerId: userStore.userId, status: 'pending' }),
-        invitationApi.list({ inviteeId: userStore.userId, status: 'pending' })
+        invitationApi.list({ inviteeId: userStore.userId, status: 'pending' }),
+        messageApi.unread(userStore.userId)
       ])
-      unreadCount.value = borrows.length + invitations.length
+      unreadCount.value = borrows.length + invitations.length + (reminderUnread?.unreadCount || 0)
     } catch (e) {}
   }
 })

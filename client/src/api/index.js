@@ -68,4 +68,13 @@ export const recommendApi = {
   pieces: (userId) => api.get(`/recommendations/pieces/${userId}`)
 }
 
+export const messageApi = {
+  check: () => api.post('/messages/check'),
+  list: (userId) => api.get(`/messages/user/${userId}`),
+  unread: (userId) => api.get(`/messages/user/${userId}/unread`),
+  markRead: (id) => api.put(`/messages/${id}/read`),
+  markAllRead: (userId) => api.put(`/messages/user/${userId}/read-all`),
+  remove: (id) => api.delete(`/messages/${id}`)
+}
+
 export default api

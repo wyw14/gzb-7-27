@@ -216,6 +216,105 @@
             <div v-else class="empty-state small"><el-icon><User /></el-icon><p>暂无发出的邀约</p></div>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane>
+          <template #label>
+            <el-icon><AlarmClock /></el-icon>
+            逾期提醒
+            <el-badge v-if="unreadReminders.length" :value="unreadReminders.length" class="tab-badge" />
+          </template>
+
+          <div class="section">
+            <div class="section-header">
+              <h3>归还提醒</h3>
+              <el-button
+                v-if="unreadReminders.length"
+                size="small"
+                type="primary"
+                plain
+                @click="markAllRemindersRead"
+              >
+                <el-icon><Check /></el-icon>
+                全部标为已读
+              </el-button>
+            </div>
+
+            <div v-if="reminders.length" class="msg-list">
+              <div
+                v-for="r in reminders"
+                :key="r.id"
+                class="msg-item card"
+                :class="{ 'msg-unread': !r.read, 'msg-overdue': r.type.startsWith('overdue') }"
+                @click="handleReminderClick(r)"
+              >
+                <div class="msg-avatar">
+                  <img
+                    v-if="r.type.endsWith('_borrower')"
+                    :src="r.instrumentImage"
+                    class="inst-thumb"
+                  />
+                  <img
+                    v-else
+                    :src="r.counterpartAvatar"
+                    class="avatar-md"
+                  />
+                </div>
+                <div class="msg-content">
+                  <div class="msg-title">
+                    <span class="reminder-icon">{{ r.type.startsWith('overdue') ? '⚠️' : '🔔' }}</span>
+                    <b>{{ r.title }}</b>
+                    <span
+                      class="badge"
+                      :class="r.type.startsWith('overdue') ? 'badge-danger' : 'badge-warning'"
+                    >
+                      {{ r.type.startsWith('overdue') ? `已逾期${r.overdueDays}天` : (r.remainingDays === 0 ? '今日到期' : `还有${r.remainingDays}天`) }}
+                    </span>
+                    <span v-if="!r.read" class="unread-dot"></span>
+                  </div>
+                  <div class="msg-meta">
+                    <span><el-icon><Goods /></el-icon> {{ r.instrumentName }}</span>
+                    <span>
+                      <el-icon><Calendar /></el-icon>
+                      应归还日期：{{ r.endDate }}
+                    </span>
+                    <span v-if="r.type.endsWith('_borrower')">
+                      <el-icon><User /></el-icon>
+                      主人：{{ r.counterpartName }}
+                    </span>
+                    <span v-else>
+                      <el-icon><User /></el-icon>
+                      借用人：{{ r.counterpartName }}
+                    </span>
+                  </div>
+                  <p class="msg-body">{{ r.content }}</p>
+                  <div class="msg-actions">
+                    <router-link
+                      v-if="r.instrumentId"
+                      :to="`/instruments/${r.instrumentId}`"
+                    >
+                      <el-button size="small" type="primary">
+                        <el-icon><View /></el-icon>
+                        查看乐器
+                      </el-button>
+                    </router-link>
+                    <el-button
+                      v-if="!r.read"
+                      size="small"
+                      @click.stop="markReminderRead(r)"
+                    >
+                      <el-icon><Check /></el-icon>
+                      标为已读
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-state small">
+              <el-icon><AlarmClock /></el-icon>
+              <p>暂无归还提醒，祝您使用愉快~</p>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </div>
     
@@ -248,15 +347,16 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useUserStore } from '../stores/user'
-import { borrowApi, invitationApi, reviewApi } from '../api'
+import { borrowApi, invitationApi, reviewApi, messageApi } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Goods, User, Calendar, Wallet, CircleCheck, CircleClose, MagicStick, Notebook, Location, Edit } from '@element-plus/icons-vue'
+import { Goods, User, Calendar, Wallet, CircleCheck, CircleClose, MagicStick, Notebook, Location, Edit, AlarmClock, Check, View } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
 const activeTab = ref('0')
 const borrows = ref([])
 const invitations = ref([])
+const reminders = ref([])
 const showReview = ref(false)
 const submitting = ref(false)
 
@@ -296,6 +396,8 @@ const invitationsAsInvitee = computed(() => invitations.value.filter(i => i.invi
 const invitationsAsInviter = computed(() => invitations.value.filter(i => i.inviterId === userStore.userId))
 const pendingInvitationsAsInvitee = computed(() => invitationsAsInvitee.value.filter(i => i.status === 'pending'))
 
+const unreadReminders = computed(() => reminders.value.filter(r => !r.read))
+
 onMounted(async () => {
   await loadAll()
 })
@@ -316,6 +418,12 @@ const loadAll = async () => {
   
   try {
     invitations.value = await invitationApi.listByUser(userStore.userId)
+  } catch (e) {
+    console.error(e)
+  }
+
+  try {
+    reminders.value = await messageApi.list(userStore.userId)
   } catch (e) {
     console.error(e)
   }
@@ -454,6 +562,37 @@ const submitReview = async () => {
     submitting.value = false
   }
 }
+
+const handleReminderClick = async (r) => {
+  if (!r.read) {
+    await markReminderRead(r)
+  }
+}
+
+const markReminderRead = async (r) => {
+  try {
+    await messageApi.markRead(r.id)
+    r.read = true
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const markAllRemindersRead = async () => {
+  try {
+    await ElMessageBox.confirm('确认将所有归还提醒标记为已读？', '提示', {
+      type: 'info'
+    })
+  } catch { return }
+
+  try {
+    await messageApi.markAllRead(userStore.userId)
+    reminders.value.forEach(r => { r.read = true })
+    ElMessage.success('已全部标为已读')
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -574,5 +713,48 @@ const submitReview = async () => {
 
 .empty-state.small .el-icon {
   font-size: 48px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-left: 10px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.section-header h3 {
+  font-size: 16px;
+  margin-bottom: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+.reminder-icon {
+  font-size: 18px;
+}
+
+.unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f56c6c;
+  margin-left: 4px;
+}
+
+.msg-unread {
+  background: linear-gradient(90deg, #fff7e6 0%, transparent 60%);
+  border-left: 3px solid var(--primary-color);
+}
+
+.msg-overdue {
+  background: linear-gradient(90deg, #fef0f0 0%, transparent 60%);
+  border-left: 3px solid #f56c6c;
+}
+
+.msg-unread.msg-overdue {
+  background: linear-gradient(90deg, #fef0f0 0%, #fff7e6 60%, transparent 100%);
 }
 </style>
