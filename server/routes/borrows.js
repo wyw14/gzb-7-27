@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { readJSON, writeJSON } = require('../utils/storage');
+const { cleanupRemindersByBorrowId } = require('./messages');
 
 const router = express.Router();
 
@@ -133,6 +134,11 @@ router.put('/:id', (req, res) => {
     if (instIdx !== -1) {
       instruments[instIdx].status = 'available';
       writeJSON('instruments.json', instruments);
+    }
+    try {
+      cleanupRemindersByBorrowId(borrows[idx].id);
+    } catch (e) {
+      console.error('清理逾期提醒失败:', e);
     }
   }
   

@@ -15,134 +15,147 @@ function getDaysDiff(dateStr) {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+function cleanupRemindersByBorrowId(borrowId) {
+  const messages = readJSON('messages.json', []);
+  const beforeCount = messages.length;
+  const filtered = messages.filter(m => m.borrowId !== borrowId);
+  if (filtered.length !== beforeCount) {
+    writeJSON('messages.json', filtered);
+  }
+  return beforeCount - filtered.length;
+}
+
+function buildReminderMessage({ borrow, role, status, daysDiff, instrument, user, counterpart }) {
+  const days = Math.abs(daysDiff);
+  const typePrefix = status;
+  const typeSuffix = role;
+  const type = `${typePrefix}_${typeSuffix}`;
+
+  const base = {
+    id: 'm' + uuidv4().slice(0, 8),
+    userId: user.id,
+    type,
+    borrowId: borrow.id,
+    instrumentId: borrow.instrumentId,
+    instrumentName: instrument?.name || '',
+    instrumentImage: instrument?.image || '',
+    counterpartId: counterpart.id,
+    counterpartName: counterpart?.username || '',
+    counterpartAvatar: counterpart?.avatar || '',
+    endDate: borrow.endDate,
+    read: false,
+    createdAt: new Date().toISOString()
+  };
+
+  if (status === 'overdue') {
+    return {
+      ...base,
+      uniqueKey: `${type}_${borrow.id}_${days}`,
+      overdueDays: days,
+      title: role === 'borrower' ? '⚠️ 乐器已逾期' : '⚠️ 借出乐器已逾期',
+      content: role === 'borrower'
+        ? `您借用的【${instrument?.name || '乐器'}】已逾期 ${days} 天，请尽快归还！`
+        : `【${counterpart?.username || '用户'}】借用的【${instrument?.name || '乐器'}】已逾期 ${days} 天，请及时跟进归还事宜。`
+    };
+  } else {
+    return {
+      ...base,
+      uniqueKey: `${type}_${borrow.id}_${days}`,
+      remainingDays: daysDiff,
+      title: daysDiff === 0
+        ? (role === 'borrower' ? '🔔 今日需归还乐器' : '🔔 今日乐器应归还')
+        : `🔔 距归还还有 ${daysDiff} 天`,
+      content: daysDiff === 0
+        ? (role === 'borrower'
+            ? `您借用的【${instrument?.name || '乐器'}】今日到期，请记得按时归还！`
+            : `【${counterpart?.username || '用户'}】借用的【${instrument?.name || '乐器'}】今日到期，请留意归还情况。`)
+        : (role === 'borrower'
+            ? `您借用的【${instrument?.name || '乐器'}】还有 ${daysDiff} 天到期，请提前做好归还准备。`
+            : `【${counterpart?.username || '用户'}】借用的【${instrument?.name || '乐器'}】还有 ${daysDiff} 天到期，可适当提醒对方。`)
+    };
+  }
+}
+
 function checkAndGenerateReminders() {
   const borrows = readJSON('borrows.json', []);
-  const messages = readJSON('messages.json', []);
   const instruments = readJSON('instruments.json', []);
   const users = readJSON('users.json', []);
+  let messages = readJSON('messages.json', []);
 
-  const borrowingRecords = borrows.filter(b => b.status === 'borrowing');
-  const existingKeys = new Set(messages.map(m => m.uniqueKey));
+  const borrowingSet = new Set(
+    borrows.filter(b => b.status === 'borrowing').map(b => b.id)
+  );
 
+  const beforeTotal = messages.length;
+  messages = messages.filter(m => {
+    if (!m.borrowId) return true;
+    return borrowingSet.has(m.borrowId);
+  });
+  const removedStale = beforeTotal - messages.length;
+
+  const existingKeys = new Map(messages.map(m => [m.uniqueKey, m]));
+  const currentKeys = new Set();
+  let updatedCount = 0;
   let newCount = 0;
 
-  borrowingRecords.forEach(b => {
+  borrows.filter(b => b.status === 'borrowing').forEach(b => {
     const daysDiff = getDaysDiff(b.endDate);
+    if (daysDiff > REMIND_DAYS) return;
+
     const instrument = instruments.find(i => i.id === b.instrumentId);
     const borrower = users.find(u => u.id === b.borrowerId);
     const owner = users.find(u => u.id === b.ownerId);
 
-    if (daysDiff < 0) {
-      const overdueDays = Math.abs(daysDiff);
-      const borrowerKey = `overdue_borrower_${b.id}`;
-      if (!existingKeys.has(borrowerKey)) {
-        messages.push({
-          id: 'm' + uuidv4().slice(0, 8),
-          userId: b.borrowerId,
-          type: 'overdue_borrower',
-          uniqueKey: borrowerKey,
-          borrowId: b.id,
-          instrumentId: b.instrumentId,
-          instrumentName: instrument?.name || '',
-          instrumentImage: instrument?.image || '',
-          counterpartId: b.ownerId,
-          counterpartName: owner?.username || '',
-          counterpartAvatar: owner?.avatar || '',
-          endDate: b.endDate,
-          overdueDays,
-          title: '⚠️ 乐器已逾期',
-          content: `您借用的【${instrument?.name || '乐器'}】已逾期 ${overdueDays} 天，请尽快归还！`,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
-        newCount++;
-      }
+    const status = daysDiff < 0 ? 'overdue' : 'upcoming';
 
-      const ownerKey = `overdue_owner_${b.id}`;
-      if (!existingKeys.has(ownerKey)) {
-        messages.push({
-          id: 'm' + uuidv4().slice(0, 8),
-          userId: b.ownerId,
-          type: 'overdue_owner',
-          uniqueKey: ownerKey,
-          borrowId: b.id,
-          instrumentId: b.instrumentId,
-          instrumentName: instrument?.name || '',
-          instrumentImage: instrument?.image || '',
-          counterpartId: b.borrowerId,
-          counterpartName: borrower?.username || '',
-          counterpartAvatar: borrower?.avatar || '',
-          endDate: b.endDate,
-          overdueDays,
-          title: '⚠️ 借出乐器已逾期',
-          content: `【${borrower?.username || '用户'}】借用的【${instrument?.name || '乐器'}】已逾期 ${overdueDays} 天，请及时跟进归还事宜。`,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
-        newCount++;
-      }
-    } else if (daysDiff <= REMIND_DAYS) {
-      const borrowerKey = `upcoming_borrower_${b.id}`;
-      if (!existingKeys.has(borrowerKey)) {
-        messages.push({
-          id: 'm' + uuidv4().slice(0, 8),
-          userId: b.borrowerId,
-          type: 'upcoming_borrower',
-          uniqueKey: borrowerKey,
-          borrowId: b.id,
-          instrumentId: b.instrumentId,
-          instrumentName: instrument?.name || '',
-          instrumentImage: instrument?.image || '',
-          counterpartId: b.ownerId,
-          counterpartName: owner?.username || '',
-          counterpartAvatar: owner?.avatar || '',
-          endDate: b.endDate,
-          remainingDays: daysDiff,
-          title: daysDiff === 0 ? '🔔 今日需归还乐器' : `🔔 距归还还有 ${daysDiff} 天`,
-          content: daysDiff === 0
-            ? `您借用的【${instrument?.name || '乐器'}】今日到期，请记得按时归还！`
-            : `您借用的【${instrument?.name || '乐器'}】还有 ${daysDiff} 天到期，请提前做好归还准备。`,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
-        newCount++;
-      }
+    [
+      { role: 'borrower', user: borrower, counterpart: owner },
+      { role: 'owner', user: owner, counterpart: borrower }
+    ].forEach(({ role, user, counterpart }) => {
+      if (!user || !counterpart) return;
 
-      const ownerKey = `upcoming_owner_${b.id}`;
-      if (!existingKeys.has(ownerKey)) {
-        messages.push({
-          id: 'm' + uuidv4().slice(0, 8),
-          userId: b.ownerId,
-          type: 'upcoming_owner',
-          uniqueKey: ownerKey,
-          borrowId: b.id,
-          instrumentId: b.instrumentId,
-          instrumentName: instrument?.name || '',
-          instrumentImage: instrument?.image || '',
-          counterpartId: b.borrowerId,
-          counterpartName: borrower?.username || '',
-          counterpartAvatar: borrower?.avatar || '',
-          endDate: b.endDate,
-          remainingDays: daysDiff,
-          title: daysDiff === 0 ? '🔔 今日乐器应归还' : `🔔 距乐器归还还有 ${daysDiff} 天`,
-          content: daysDiff === 0
-            ? `【${borrower?.username || '用户'}】借用的【${instrument?.name || '乐器'}】今日到期，请留意归还情况。`
-            : `【${borrower?.username || '用户'}】借用的【${instrument?.name || '乐器'}】还有 ${daysDiff} 天到期，可适当提醒对方。`,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
+      const newMsg = buildReminderMessage({
+        borrow: b, role, status, daysDiff, instrument, user, counterpart
+      });
+      currentKeys.add(newMsg.uniqueKey);
+
+      const existing = existingKeys.get(newMsg.uniqueKey);
+      if (!existing) {
+        messages.push(newMsg);
         newCount++;
       }
-    }
+    });
   });
 
+  const beforeCleanup = messages.length;
+  messages = messages.filter(m => {
+    if (!m.borrowId) return true;
+    if (!borrowingSet.has(m.borrowId)) return false;
+    if (!m.uniqueKey) return true;
+    return currentKeys.has(m.uniqueKey);
+  });
+  const removedOutdated = beforeCleanup - messages.length;
+  updatedCount = removedOutdated;
+
   writeJSON('messages.json', messages);
-  return { generated: newCount, total: messages.length };
+
+  return {
+    generated: newCount,
+    updated: updatedCount,
+    removedStale,
+    removedOutdated,
+    total: messages.length
+  };
 }
 
 router.post('/check', (req, res) => {
   const result = checkAndGenerateReminders();
   res.json({ success: true, ...result });
+});
+
+router.post('/cleanup/:borrowId', (req, res) => {
+  const removed = cleanupRemindersByBorrowId(req.params.borrowId);
+  res.json({ success: true, removed });
 });
 
 router.get('/user/:userId', (req, res) => {
@@ -209,4 +222,4 @@ router.delete('/:id', (req, res) => {
   res.json({ success: true });
 });
 
-module.exports = { router, checkAndGenerateReminders };
+module.exports = { router, checkAndGenerateReminders, cleanupRemindersByBorrowId };

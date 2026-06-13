@@ -74,7 +74,8 @@ export const messageApi = {
   unread: (userId) => api.get(`/messages/user/${userId}/unread`),
   markRead: (id) => api.put(`/messages/${id}/read`),
   markAllRead: (userId) => api.put(`/messages/user/${userId}/read-all`),
-  remove: (id) => api.delete(`/messages/${id}`)
+  remove: (id) => api.delete(`/messages/${id}`),
+  cleanupByBorrow: (borrowId) => api.post(`/messages/cleanup/${borrowId}`)
 }
 
 export default api
